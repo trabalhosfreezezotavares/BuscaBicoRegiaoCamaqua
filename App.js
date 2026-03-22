@@ -12,28 +12,28 @@ import { supabase } from './supabase';
 import LoginScreen from './src/screens/LoginScreen';
 import ProfileSelectionScreen from './src/screens/ProfileSelectionScreen';
 import ProfessionalFormScreen from './src/screens/ProfessionalFormScreen';
+import HomeScreen from './src/screens/HomeScreen';
 
 /**
- * Componente Raiz do Aplicativo Busca Bico Camaquã.
- * Gerencia a navegação principal baseada no estado de autenticação e no perfil do banco de dados.
+ * Componente Principal do Aplicativo Busca Bico Camaquã.
+ * Este arquivo controla qual tela o usuário deve ver dependendo do seu estado.
  */
 export default function App() {
-  // Estado para armazenar a sessão ativa do Supabase
+  // Armazena a sessão de login do usuário
   const [sessao, setSessao] = useState(null);
   
-  // Estado para controlar se o aplicativo ainda está carregando dados iniciais
+  // Controla se o aplicativo ainda está buscando informações iniciais
   const [estaCarregando, setEstaCarregando] = useState(true);
   
-  // Estado para armazenar os dados do perfil do usuário logado (user_type, full_name, etc.)
+  // Armazena os dados do perfil (tipo de conta, nome, profissão, etc.)
   const [perfilUsuario, setPerfilUsuario] = useState(null);
 
   /**
-   * Busca as informações do perfil do usuário diretamente na tabela 'profiles' do Supabase.
-   * @param {string} idDoUsuario - O UUID único do usuário autenticado.
+   * Função para buscar os dados do perfil do usuário no banco de dados Supabase.
+   * @param {string} idDoUsuario - O identificador único do usuário logado.
    */
   async function buscarDadosDoPerfil(idDoUsuario) {
     try {
-      // Fazemos a consulta para saber o tipo de usuário e se ele já completou o cadastro
       const { data, error } = await supabase
         .from('profiles')
         .select('user_type, full_name, occupation')
@@ -41,23 +41,20 @@ export default function App() {
         .single();
 
       if (error && error.code !== 'PGRST116') {
-        // O erro PGRST116 significa que a linha ainda não existe, o que é normal no primeiro login
-        console.error('Erro ao buscar perfil no Supabase:', error.message);
+        console.error('Erro ao buscar perfil:', error.message);
       } else {
-        // Armazenamos os dados encontrados (ou null se for novo usuário)
         setPerfilUsuario(data);
       }
     } catch (erroInesperado) {
-      console.error('Erro inesperado na busca de perfil:', erroInesperado);
+      console.error('Erro inesperado:', erroInesperado);
     } finally {
-      // Após a tentativa de busca, paramos o indicador de carregamento
       setEstaCarregando(false);
     }
   }
 
   /**
-   * Função chamada pelas telas filhas para atualizar o estado do aplicativo.
-   * Isso faz com que a tela mude automaticamente após uma ação do usuário.
+   * Função para atualizar o estado do aplicativo quando uma etapa é concluída.
+   * Chamada após o login, após escolher o perfil ou após preencher o cadastro.
    */
   function atualizarFluxoDoAplicativo() {
     if (sessao?.user?.id) {
@@ -66,7 +63,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    // 1. Verifica se já existe uma sessão salva no dispositivo ao abrir o app
+    // 1. Verifica se já existe uma sessão ativa ao abrir o aplicativo
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSessao(session);
       if (session) {
@@ -76,7 +73,7 @@ export default function App() {
       }
     });
 
-    // 2. Escuta em tempo real mudanças no estado da autenticação (Login ou Logout)
+    // 2. Monitora mudanças no estado de autenticação (Login ou Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_evento, session) => {
       setSessao(session);
       if (session) {
@@ -87,7 +84,6 @@ export default function App() {
       }
     });
 
-    // Limpa a escuta quando o componente é destruído
     return () => {
       if (subscription) {
         subscription.unsubscribe();
@@ -95,7 +91,7 @@ export default function App() {
     };
   }, []);
 
-  // Exibe uma tela de carregamento com o símbolo girando enquanto busca os dados
+  // Exibe um indicador de carregamento enquanto o aplicativo decide qual tela mostrar
   if (estaCarregando) {
     return (
       <View style={styles.containerCarregamento}>
@@ -106,34 +102,30 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.containerPrincipal}>
-      {/* Configura a barra de status do celular (hora, bateria) para fundo branco e ícones escuros */}
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      {/* LÓGICA DE NAVEGAÇÃO ENTRE TELAS: */}
+      {/* LÓGICA DE NAVEGAÇÃO: */}
       
-      {/* CASO 1: Usuário não está logado */}
+      {/* Se não estiver logado, mostra a tela de Login */}
       {!sessao ? (
         <LoginScreen />
       ) : (
-        /* CASO 2: Usuário logado, mas ainda não escolheu se é Profissional ou Cliente */
+        /* Se logado, mas não escolheu entre Profissional ou Cliente */
         !perfilUsuario?.user_type ? (
           <ProfileSelectionScreen 
             session={sessao} 
             aoConcluir={atualizarFluxoDoAplicativo} 
           />
         ) : (
-          /* CASO 3: Usuário escolheu ser 'Profissional', mas ainda não preencheu o formulário de cadastro */
+          /* Se escolheu ser Profissional, mas ainda não preencheu o formulário de cadastro */
           perfilUsuario.user_type === 'profissional' && !perfilUsuario.full_name ? (
             <ProfessionalFormScreen 
               session={sessao} 
               aoSalvar={atualizarFluxoDoAplicativo} 
             />
           ) : (
-            /* CASO 4: Usuário é Cliente ou Profissional já cadastrado. Aqui entra a Home do App. */
-            <View style={styles.containerFinalizado}>
-              <ActivityIndicator size="small" color="#10b981" />
-              {/* Próximo passo: Desenvolver a Lista de Bicos para Camaquã aqui */}
-            </View>
+            /* Se for Cliente ou Profissional já cadastrado, mostra a Home (Lista) */
+            <HomeScreen />
           )
         )
       )}
@@ -151,10 +143,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-  },
-  containerFinalizado: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   }
 });
